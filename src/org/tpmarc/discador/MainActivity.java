@@ -21,9 +21,7 @@ import android.util.Log;
 import android.view.Display;
 import android.view.Menu;
 import android.view.MotionEvent;
-
-// TODO: Corrigir a remoção contínua de números através do shake.
-//       Colocar um flag de tempo mínimo entre um shake e outro.
+import android.widget.TextView;
 
 public class MainActivity extends Activity implements SensorEventListener {
 
@@ -38,14 +36,18 @@ public class MainActivity extends Activity implements SensorEventListener {
 	private SensorManager sensorManager;
 	private long ultimoUpdateAcelerometro = -1;
 	private float x, y, z, lastX, lastY, lastZ;
-	private static final int SHAKE_THRESHOLD = 800;
+	private static final int SHAKE_THRESHOLD = 200;
+	private static final int LARGE_SHAKE_THRESHOLD = 800;
 	
 	private boolean chamadaIniciada = false;
 	private boolean toqueLiberado 	= true;
 	private long	tempoToque	= 0;
 	private long 	ultimoToque = 0;
+	private long	ultimoShake = 0;
 	private int 	ladoTocado 	= 0;
 	private int  	toquesConsecutivos = 0;
+	
+	private TextView textViewNumeros;
 	
 	/*
 	 * Tarefa programada executada a cada 100 milisegundos.
@@ -67,18 +69,25 @@ public class MainActivity extends Activity implements SensorEventListener {
 			
 			if (!chamadaIniciada && !toqueLiberado && tempoToque > 3000) {
 				
-				try {
-					play("audio/discando.mp3");
-				} catch (IOException e) {
-					e.printStackTrace();
+				/*
+				 * Se algum dígito foi discado, pode tentar chamada.
+				 * 
+				 */
+				if ( numerosDiscados.size() > 0 ) {
+					try {
+						play("audio/discando.mp3");
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					
+					Intent intent = new Intent(Intent.ACTION_CALL);
+					Log.d("numero discado:", getNumeroDiscado());
+					intent.setData(Uri.parse("tel:" + getNumeroDiscado()));
+					startActivity(intent);
+					
+					chamadaIniciada = true;	
 				}
 				
-				Intent intent = new Intent(Intent.ACTION_CALL);
-				Log.d("numero discado:", getNumeroDiscado());
-				intent.setData(Uri.parse("tel:" + getNumeroDiscado()));
-				startActivity(intent);
-				
-				chamadaIniciada = true;
 			}
 			
 			if (!toqueLiberado) {
@@ -115,6 +124,8 @@ public class MainActivity extends Activity implements SensorEventListener {
 						
 						numerosDiscados.add(numero);
 						
+						textViewNumeros.setText(getNumeroDiscado());
+						
 						try {
 							play("audio/"+numero+".mp3");
 						} catch (IOException e) {
@@ -136,6 +147,8 @@ public class MainActivity extends Activity implements SensorEventListener {
 						int numero = Math.max(10 - toquesConsecutivos, 0);
 						
 						numerosDiscados.add(numero);
+						
+						textViewNumeros.setText(getNumeroDiscado());
 						
 						try {
 							play("audio/"+numero+".mp3");
@@ -164,6 +177,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 		
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+		textViewNumeros = (TextView)findViewById(R.id.textViewNumeros);
 		
 		// Uso do acelerômetro.
 		sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -188,6 +202,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 		
 		chamadaIniciada = false;
 		numerosDiscados.clear();
+		textViewNumeros.setText(getNumeroDiscado());
 		toqueLiberado = true;
 		tempoToque 	= 0;
 		ultimoToque = 0;
@@ -204,13 +219,12 @@ public class MainActivity extends Activity implements SensorEventListener {
 
 	@Override
 	protected void onDestroy() {
-		
-		/*
+
 		try {
-			play("audio/encerrado.mp3");
+			play("audio/tchau.mp3");
 		} catch (IOException e) {
 			e.printStackTrace();
-		}*/
+		}
 		
 		super.onDestroy();
 	}
@@ -397,8 +411,6 @@ public class MainActivity extends Activity implements SensorEventListener {
 
 	@Override
 	public void onAccuracyChanged(Sensor arg0, int arg1) {
-		// TODO Auto-generated method stub
-		
 	}
 
 	/*
@@ -428,19 +440,59 @@ public class MainActivity extends Activity implements SensorEventListener {
 				
 				float velocidade = Math.abs(x+y+z - lastX-lastY-lastZ)/diferencaTempo*10000;
 				
-				if (velocidade > SHAKE_THRESHOLD) {
+				
+				
+				if (ultimoShake == 0 || tempoAgora - ultimoShake > 2000) {
+					
+					
 					
 					/*
-					 * Se o telefone for chacoalhado, o último número 
-					 * discado é cancelado.
+					 * Se a aceleração do celular na hora que chacoalhado for
+					 * muito alta.
+					 * 
+					 * 
 					 */
-					if (numerosDiscados.size() > 0)	{
+					if (velocidade > LARGE_SHAKE_THRESHOLD) {
 						
-						Log.d("Shake", "detectado");
-						numerosDiscados.remove(numerosDiscados.size()-1);	
+						try {
+							play("audio/todos.mp3");
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+						
+						/*
+						 * Apaga todos os números discados.
+						 */
+						numerosDiscados.clear();
+						
+						textViewNumeros.setText(getNumeroDiscado());
 					}
-				}
+					
+					/*
+					 * Se for chacoalhado em velocidade reduzida.
+					 * 
+					 */
+					else if (velocidade > SHAKE_THRESHOLD) {
+						
+						/*
+						 * O último número discado é cancelado.
+						 */
+						if (numerosDiscados.size() > 0)	{
+							
+							try {
+								play("audio/ultimo.mp3");
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
+							
+							numerosDiscados.remove(numerosDiscados.size()-1);
+							
+							textViewNumeros.setText(getNumeroDiscado());
+						}
+					}
 				
+					ultimoShake = tempoAgora;
+				}
 				lastX = x;
 				lastY = y;
 				lastZ = z;
